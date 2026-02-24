@@ -76,7 +76,7 @@ void bsc_event_deinit(BSC_EVENT *ev)
 
 void bsc_event_wait(BSC_EVENT *ev)
 {
-    DWORD ret;
+    DWORD ret = WAIT_OBJECT_0;
 
     DEBUG_PRINTF("bsc_event_wait() >>> ev = %p\n", ev);
     WaitForSingleObject(ev->mutex, INFINITE);
@@ -105,7 +105,7 @@ void bsc_event_wait(BSC_EVENT *ev)
 
 bool bsc_event_timedwait(BSC_EVENT *ev, unsigned int ms_timeout)
 {
-    DWORD ret;
+    DWORD ret = WAIT_TIMEOUT;
 
     DEBUG_PRINTF("bsc_event_timedwait() >>> ev = %p\n", ev);
     WaitForSingleObject(ev->mutex, INFINITE);
