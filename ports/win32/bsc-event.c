@@ -25,6 +25,7 @@
 struct BSC_Event {
     HANDLE mutex;
     HANDLE event;
+    bool v;
     size_t counter;
 };
 
@@ -60,6 +61,7 @@ BSC_EVENT *bsc_event_init(void)
         return NULL;
     }
 
+    ret->v = false;
     ret->counter = 0;
 
     return ret;
@@ -74,30 +76,35 @@ void bsc_event_deinit(BSC_EVENT *ev)
 
 void bsc_event_wait(BSC_EVENT *ev)
 {
+    DWORD ret;
+
     DEBUG_PRINTF("bsc_event_wait() >>> ev = %p\n", ev);
     WaitForSingleObject(ev->mutex, INFINITE);
     DEBUG_PRINTF("bsc_event_wait() counter before %zu\n", ev->counter);
     ev->counter++;
-    ReleaseMutex(ev->mutex);
-    WaitForSingleObject(ev->event, INFINITE);
-    WaitForSingleObject(ev->mutex, INFINITE);
+    DEBUG_PRINTF("bsc_event_wait() counter %zu\n", ev->counter);
+    while (!ev->v) {
+        ReleaseMutex(ev->mutex);
+        ret = WaitForSingleObject(ev->event, INFINITE);
+        WaitForSingleObject(ev->mutex, INFINITE);
+        if (ret != WAIT_OBJECT_0) {
+            DEBUG_PRINTF("bsc_event_wait() wait ret = %lu\n", ret);
+        }
+    }
     DEBUG_PRINTF("bsc_event_wait() before counter %zu\n", ev->counter);
     ev->counter--;
     DEBUG_PRINTF("bsc_event_wait() counter %zu\n", ev->counter);
     if (!ev->counter) {
+        ev->v = false;
         DEBUG_PRINTF("bsc_event_wait() reset event\n");
-        ReleaseMutex(ev->mutex);
         ResetEvent(ev->event);
-    } else {
-        DEBUG_PRINTF("bsc_event_wait() set event\n");
-        ReleaseMutex(ev->mutex);
     }
+    ReleaseMutex(ev->mutex);
     DEBUG_PRINTF("bsc_event_wait() <<< ev = %p\n", ev);
 }
 
 bool bsc_event_timedwait(BSC_EVENT *ev, unsigned int ms_timeout)
 {
-    bool timedout = false;
     DWORD ret;
 
     DEBUG_PRINTF("bsc_event_timedwait() >>> ev = %p\n", ev);
@@ -105,22 +112,28 @@ bool bsc_event_timedwait(BSC_EVENT *ev, unsigned int ms_timeout)
     DEBUG_PRINTF("bsc_event_timedwait() counter before %zu\n", ev->counter);
     ev->counter++;
     DEBUG_PRINTF("bsc_event_timedwait() counter %zu\n", ev->counter);
-    ReleaseMutex(ev->mutex);
-
-    ret = WaitForSingleObject(ev->event, ms_timeout);
-    WaitForSingleObject(ev->mutex, INFINITE);
+    while (!ev->v) {
+        ReleaseMutex(ev->mutex);
+        ret = WaitForSingleObject(ev->event, ms_timeout);
+        WaitForSingleObject(ev->mutex, INFINITE);
+        if (ret != WAIT_OBJECT_0) {
+            break;
+        }
+    }
+    if (ev->v) {
+        ret = WAIT_OBJECT_0;
+    }
 
     DEBUG_PRINTF("bsc_event_timedwait() before counter %zu\n", ev->counter);
     ev->counter--;
     DEBUG_PRINTF("bsc_event_timedwait() counter %zu\n", ev->counter);
     if (!ev->counter) {
-        ReleaseMutex(ev->mutex);
         if (ret == WAIT_OBJECT_0) {
+            ev->v = false;
             ResetEvent(ev->event);
         }
-    } else {
-        ReleaseMutex(ev->mutex);
     }
+    ReleaseMutex(ev->mutex);
     DEBUG_PRINTF(
         "bsc_event_timedwait() <<< ret = %d\n",
         ret == WAIT_OBJECT_0 ? true : false);
@@ -130,7 +143,10 @@ bool bsc_event_timedwait(BSC_EVENT *ev, unsigned int ms_timeout)
 void bsc_event_signal(BSC_EVENT *ev)
 {
     DEBUG_PRINTF("bsc_event_signal() >>> ev = %p\n", ev);
+    WaitForSingleObject(ev->mutex, INFINITE);
+    ev->v = true;
     SetEvent(ev->event);
+    ReleaseMutex(ev->mutex);
     DEBUG_PRINTF("bsc_event_signal() <<< ev = %p\n", ev);
 }
 
